@@ -1,0 +1,11 @@
+import org.amcworld.springcrm.Work
+
+model {
+    Work workInstance
+    String fullNumber
+}
+
+json {
+    fullNumber fullNumber
+    inventoryItem g.render(workInstance, [deep: true, excludes: 'pricing'])
+}

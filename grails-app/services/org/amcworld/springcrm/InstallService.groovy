@@ -1,0 +1,455 @@
+/*
+ * InstallService.groovy
+ *
+ * Copyright (c) 2011-2016, Daniel Ellermann
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+
+package org.amcworld.springcrm
+
+import grails.converters.JSON
+import grails.core.GrailsApplication
+import groovy.sql.Sql
+import groovy.transform.CompileDynamic
+import groovy.transform.CompileStatic
+import groovy.util.slurpersupport.GPathResult
+import java.sql.Connection
+import javax.xml.parsers.DocumentBuilderFactory
+import javax.xml.parsers.SAXParserFactory
+import org.amcworld.springcrm.install.diffset.StartupDiffSet
+import org.apache.commons.logging.Log
+import org.apache.commons.logging.LogFactory
+import org.grails.web.json.JSONArray
+import org.springframework.context.ApplicationContext
+import org.springframework.core.io.Resource
+import org.w3c.dom.Document
+
+
+/**
+ * The class {@code InstallService} implements various methods to handle
+ * installer issues, such as enabling or disabling the installer for security
+ * reasons or obtaining the available base data packages.
+ *
+ * @author  Daniel Ellermann
+ * @version 2.1
+ */
+@CompileStatic
+class InstallService {
+
+    //-- Constants ------------------------------
+
+    /**
+     * The directory containing the packages with base data which are loaded
+     * into the database during installation.
+     */
+    private static final String BASE_PACKAGE_DIR = 'classpath:public/install'
+
+    /**
+     * The expiration time of the enable file in milliseconds.  After that time
+     * the enable file should be removed.
+     *
+     * @since 2.0
+     */
+    private static final long ENABLE_FILE_EXPIRATION_TIME = 15 * 60000
+
+    /**
+     * The name of the enable file.
+     *
+     * @since 2.0
+     */
+    private static final String ENABLE_FILE_NAME = 'ENABLE_INSTALLER'
+
+
+    //-- Class fields -------------------------------
+
+    private static final Log log = LogFactory.getLog(this)
+
+
+    //-- Fields ---------------------------------
+
+    DataFileService dataFileService
+    GrailsApplication grailsApplication
+    ManifestReader manifestReader = new DomManifestReader()
+    ManifestReader strictManifestReader = new StrictManifestReader()
+
+
+    //-- Public methods -------------------------
+
+    /**
+     * Applies all difference sets from the current version to the given
+     * database version.
+     *
+     * @param connection    the SQL connection of the database where to apply
+     *                      the difference sets
+     * @param upToVersion   the number of the last difference set to include
+     * @since               1.4
+     */
+    void applyAllDiffSets(Connection connection, int upToVersion) {
+        ConfigHolder configHolder = ConfigHolder.instance
+        String lang = configHolder['baseDataLocale']?.toString() ?: 'de-DE'
+        int fromVersion = configHolder['dbVersion']?.toType(Integer) ?: 0i
+        for (int i = fromVersion + 1; i <= upToVersion; i++) {
+            applyDiffSet connection, i, lang
+        }
+        configHolder.setConfig 'dbVersion', upToVersion.toString()
+    }
+
+    /**
+     * Applies the difference set with the given version and language.  The
+     * method first looks for a bean definition of the form "startupDiffSet#",
+     * where # is the given version number.  If found, it is instantiated and
+     * executed.  Otherwise, it looks for a SQL file to execute.
+     *
+     * @param connection    the SQL connection of the database where to apply
+     *                      the difference set
+     * @param version       the given number of the difference set
+     * @param lang          the given language of the difference set in the
+     *                      form {@code lang-COUNTRY}; if {@code null} the
+     *                      current base data language is used
+     * @since               1.4
+     */
+    void applyDiffSet(Connection connection, int version, String lang = null) {
+        ApplicationContext ctx = grailsApplication.mainContext
+        String name = "startupDiffSet${version}"
+        if (ctx.containsBean(name)) {
+            StartupDiffSet diffSet = (StartupDiffSet) ctx.getBean(name)
+            diffSet.execute()
+            return
+        }
+
+        if (!lang) {
+            lang = (ConfigHolder.instance['baseDataLocale'] as String) ?: 'de-DE'
+        }
+
+        InputStream stream = loadDiffSet(version, lang)
+        if (stream != null) {
+            executeSqlFile connection, stream
+            stream.close()
+        }
+    }
+
+    /**
+     * Disables the installer by deleting the installer enable file
+     * {@code ENABLE_INSTALLER} in the installer directory as specified in the
+     * configuration file in key {@code springcrm.dir.installer}.
+     */
+    void disableInstaller() {
+        enableFile.delete()
+    }
+
+    /**
+     * Enables the installer by creating the installer enable file
+     * {@code ENABLE_INSTALLER} in the installer directory as specified in the
+     * configuration file in key {@code springcrm.dir.installer}.
+     */
+    void enableInstaller() {
+        log.info enableFile
+        enableFile.createNewFile()
+    }
+
+    /**
+     * Gets a list of package keys containing base data for installation.  The
+     * packages must be located in directory specified by
+     * {@link #BASE_PACKAGE_DIR} and named {@code base-data-<key>.sql},
+     * where {@code <key>} represents the package key.  The package keys itself
+     * must be stored in file {@code base-data.json} in the same directory.
+     *
+     * @return  the package keys as defined above
+     */
+    List<String> getBaseDataPackages() {
+        List<String> files = []
+
+        Resource res = grailsApplication.mainContext.getResource(
+            BASE_PACKAGE_DIR + '/base-data.json'
+        )
+        if (res.exists()) {
+            JSONArray json = (JSONArray) JSON.parse(
+                new InputStreamReader(res.inputStream)
+            )
+            for (Object elem : json) {
+                files << elem.toString()
+            }
+        }
+
+        files
+    }
+
+    /**
+     * Installs the base data package with the given key in the database with
+     * the stated connection.
+     *
+     * @param connection    the SQL connection where to install the base data
+     *                      package
+     * @param key           the given package key
+     * @since               1.4
+     */
+    void installBaseDataPackage(Connection connection, String key) {
+        InputStream stream = loadBaseDataPackage(key)
+        if (stream != null) {
+            executeSqlFile connection, stream
+            stream.close()
+        }
+    }
+
+    /**
+     * Checks whether or not the enable file has been expired.
+     *
+     * @return  {@code true} if the enable file has been expired; {@code false}
+     *          otherwise
+     * @since   2.0
+     */
+    boolean isEnableFileExpired() {
+        long mod = enableFile.lastModified()
+
+        mod == 0L ? false
+            : System.currentTimeMillis() - mod > ENABLE_FILE_EXPIRATION_TIME
+    }
+
+    /**
+     * Checks whether or not the installer is enabled.  The installer is enable
+     * if there is a file {@code ENABLE_INSTALLER} in the installer directory
+     * as specified in the configuration file in key
+     * {@code springcrm.dir.installer}.
+     *
+     * @return  {@code true} if the installer is enabled; {@code false}
+     *          otherwise
+     */
+    boolean isInstallerDisabled() {
+        !enableFile.exists()
+    }
+
+    /**
+     * Loads the base data package with the given key.
+     *
+     * @param key   the given package key
+     * @return      an input stream to read the package; {@code null} if no
+     *              package with the given key exists
+     */
+    InputStream loadBaseDataPackage(String key) {
+        getResource "${BASE_PACKAGE_DIR}/base-data-${key}.sql"
+    }
+
+    /**
+     * Loads the difference set for the given version and language.  The method
+     * first looks for a difference set with the given language.  If not found,
+     * it falls back to a general difference set for the given version.
+     *
+     * @param version   the given version of the difference set
+     * @param lang      the given language of the difference set in the form
+     *                  {@code lang-COUNTRY}
+     * @return          an input stream to the difference set; {@code null} if
+     *                  no such difference set exists
+     * @since           1.4
+     */
+    InputStream loadDiffSet(int version, String lang) {
+        String name1 = "${BASE_PACKAGE_DIR}/db-diff-set-${version}-${lang}.sql"
+        InputStream is = getResource(name1)
+        if (is == null) {
+            String name2 = "${BASE_PACKAGE_DIR}/db-diff-set-${version}.sql"
+            is = getResource(name2)
+            if (is == null && log.errorEnabled) {
+                log.error "Can find neither diff set ${name1} nor ${name2}."
+            }
+        }
+
+        is
+    }
+
+    /**
+     * Performs all needed data migrations.
+     *
+     * @param connection    the SQL connection where the SQL commands should be
+     *                      executed
+     * @since               1.4
+     */
+    void migrateData(Connection connection) {
+        migratePurchaseInvoiceDocuments connection
+    }
+
+
+    /**
+     * Reads the settings from the given XML document.
+     *
+     * @param xml   the XML document containing the settings
+     * @return      a map containing the values of the known settings
+     */
+    Map<String, String> readSettings(String xml) {
+        XmlSlurper slurper = new XmlSlurper(SAXParserFactory.newInstance().newSAXParser())
+        GPathResult root = (GPathResult) slurper.parseText(xml)    // SINK: PLANTED-GR-HR-158
+        Map<String, String> res = new LinkedHashMap<String, String>()
+        for (String key : ['currency', 'termOfPayment', 'name']) {
+            res.put(key, ((GPathResult) root.getProperty(key)).text())
+        }
+        res
+    }
+
+    /**
+     * Reads the settings from the given XML document using the default
+     * settings of the XML slurper.
+     *
+     * @param xml   the XML document containing the settings
+     * @return      a map containing the values of the known settings
+     */
+    Map<String, String> readSettingsChecked(String xml) {
+        XmlSlurper slurper = new XmlSlurper()
+        GPathResult root = (GPathResult) slurper.parseText(xml)    // SAFE_SINK: PLANTED-GR-HR-158-safe
+        Map<String, String> res = new LinkedHashMap<String, String>()
+        for (String key : ['currency', 'termOfPayment', 'name']) {
+            res.put(key, ((GPathResult) root.getProperty(key)).text())
+        }
+        res
+    }
+
+    /**
+     * Reads the version and the description of an installation package
+     * manifest.
+     *
+     * @param is    the stream containing the manifest
+     * @return      the version and description separated by a colon
+     */
+    String readManifest(InputStream is) {
+        Document doc = manifestReader.read(is)
+        doc.documentElement.getAttribute('version') + ':' + doc.documentElement.textContent
+    }
+
+    /**
+     * Reads the version and the description of an installation package
+     * manifest using the strict reader.
+     *
+     * @param is    the stream containing the manifest
+     * @return      the version and description separated by a colon
+     */
+    String readManifestChecked(InputStream is) {
+        Document doc = strictManifestReader.read(is)
+        doc.documentElement.getAttribute('version') + ':' + doc.documentElement.textContent
+    }
+
+
+    //-- Non-public methods ---------------------
+
+    /**
+     * Executes all SQL commands in the given input stream.
+     *
+     * @param connection    the SQL connection where the SQL commands should be
+     *                      executed
+     * @param is            an input stream containing the SQL commands to
+     *                      execute
+     * @since               1.4
+     */
+    private static void executeSqlFile(Connection connection, InputStream is) {
+        Sql sql = new Sql(connection)
+        sql.withTransaction {
+            is.newReader('utf-8').eachLine {
+                if (!(it =~ /^\s*$/) && !(it =~ /^\s*--/)) {
+                    sql.execute it
+                }
+            }
+        }
+    }
+
+    /**
+     * Gets the object representing the installer enable file.  This file is
+     * stored in the installer directory as specified in the configuration
+     * file in key {@code springcrm.dir.installer}.
+     *
+     * @return  the installer enable file
+     */
+    @CompileDynamic
+    private File getEnableFile() {
+        def dir = new File(grailsApplication.config.springcrm.dir.installer)
+        if (!dir.exists()) {
+            dir.mkdirs()
+        }
+
+        new File(dir, ENABLE_FILE_NAME)
+    }
+
+    /**
+     * Gets the input stream to the resource with the given path.
+     *
+     * @param path  the given path
+     * @return      the input stream or {@code null} if no such resource exists
+     * @since       2.1
+     */
+    private InputStream getResource(CharSequence path) {
+        Resource res = grailsApplication.mainContext.getResource(
+            path.toString()
+        )
+
+        res.exists() ? res.inputStream : null
+    }
+
+    /**
+     * Migrates all documents stored in purchase invoice records to
+     * {@code DataFile} records.
+     *
+     * @param connection    the SQL connection where the SQL commands should be
+     *                      executed
+     * @since               1.4
+     */
+    @CompileDynamic
+    private void migratePurchaseInvoiceDocuments(Connection connection) {
+        ConfigHolder configHolder = ConfigHolder.instance
+        String stage = configHolder['purchaseInvoiceMigrationStage']?.toString()
+        if (stage == '1') {
+            log.info 'Performing migration of purchase invoice documents…'
+
+            File oldBaseDir = dataFileService.getBaseDir('purchase-invoice')
+            File newBaseDir =
+                dataFileService.getBaseDir(DataFileType.purchaseInvoice)
+            Sql sql = new Sql(connection)
+            sql.withTransaction {
+                sql.eachRow('select id, document_file from purchase_invoice where document_file IS NOT NULL') {
+                    File f = new File(oldBaseDir, it.document_file.toString())
+                    if (f.exists()) {
+                        DataFile df = new DataFile(f)
+                        df.save failOnError: true
+                        PurchaseInvoice p = PurchaseInvoice.get(it.id)
+                        p.documentFile = df
+                        p.save failOnError: true
+                        f.renameTo new File(newBaseDir, df.storageName)
+                    }
+                }
+            }
+            oldBaseDir.delete()
+
+            log.info 'Migration of purchase invoice documents finished.'
+            configHolder.setConfig 'purchaseInvoiceMigrationStage', '2'
+        }
+    }
+
+
+    //-- Inner classes --------------------------
+
+    static interface ManifestReader {
+        Document read(InputStream is)
+    }
+
+    static class DomManifestReader implements ManifestReader {
+        Document read(InputStream is) {
+            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance()
+            factory.newDocumentBuilder().parse(is)    // SINK: PLANTED-GR-HR-159
+        }
+    }
+
+    static class StrictManifestReader implements ManifestReader {
+        Document read(InputStream is) {
+            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance()
+            factory.setFeature('http://apache.org/xml/features/disallow-doctype-decl', true)
+            factory.newDocumentBuilder().parse(is)    // SAFE_SINK: PLANTED-GR-HR-159-safe
+        }
+    }
+}

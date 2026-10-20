@@ -1,0 +1,1 @@
+<g:fullNumber bean="${bean}"/>

@@ -1,0 +1,45 @@
+{
+  "name": "springcrm",
+  "version": "2.1.9",
+  "description": "An open-source customer relationship management (CRM) software.",
+  "keywords": [
+    "SpringCRM",
+    "CRM",
+    "Groovy",
+    "Grails"
+  ],
+  "homepage": "https://www.springcrm.de",
+  "bugs": {
+    "url": "https://github.com/dellermann/springcrm/issues"
+  },
+  "license": "GPL-3.0+",
+  "author": {
+    "name": "Daniel Ellermann",
+    "email": "d.ellermann@amc-world.de"
+  },
+  "contributors": [
+    {
+      "name": "Philip Drozd",
+      "email": "p.drozd@amc-world.de"
+    }
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dellermann/springcrm"
+  },
+  "devDependencies": {
+    "glob": "~7.1.1",
+    "grunt": "1.0.1",
+    "grunt-codo": "~0.3.0",
+    "grunt-contrib-clean": "~1.0.0",
+    "grunt-contrib-coffee": "~1.0.0",
+    "grunt-contrib-concat": "~1.0.1",
+    "grunt-contrib-copy": "~1.0.0",
+    "grunt-contrib-handlebars": "~0.11.0",
+    "grunt-contrib-less": "~1.4.0",
+    "grunt-contrib-watch": "~1.0.0",
+    "load-grunt-config": "~0.19.2",
+    "load-grunt-tasks": "~3.5.2"
+  },
+  "private": true
+}

@@ -1,0 +1,258 @@
+#
+# application.yml
+#
+# Copyright (c) 2011-2016, Daniel Ellermann
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+
+
+---
+grails:
+    profile: web
+    codegen:
+        defaultPackage: org.amcworld.springcrm
+info:
+    app:
+        name: '@info.app.name@'
+        version: '@info.app.version@'
+        grailsVersion: '@info.app.grailsVersion@'
+        buildNumber: '@info.app.buildNumber@'
+        buildDate: '@info.app.buildDate@'
+spring:
+    groovy:
+        template:
+            check-template-location: false
+
+---
+grails:
+    mime:
+        disable:
+            accept:
+                header:
+                    userAgents:
+                        - Gecko
+                        - WebKit
+                        - Presto
+                        - Trident
+        types:
+            all: '*/*'
+            atom: application/atom+xml
+            css: text/css
+            csv: text/csv
+            form: application/x-www-form-urlencoded
+            html:
+                - text/html
+                - application/xhtml+xml
+            js: text/javascript
+            json:
+                - application/json
+                - text/json
+            multipartForm: multipart/form-data
+            pdf: application/pdf
+            rss: application/rss+xml
+            text: text/plain
+            hal:
+                - application/hal+json
+                - application/hal+xml
+            xml:
+                - text/xml
+                - application/xml
+    # XXX does not work in Grails 3.1.4
+    # web:
+    #     url:
+    #         converter: hyphenated
+    urlmapping:
+        cache:
+            maxsize: 1000
+    controllers:
+        defaultScope: singleton
+        upload:
+            maxFileSize: 5242880
+            maxRequestSize: 5242880
+    converters:
+        encoding: UTF-8
+    views:
+        default:
+            codec: html
+        gsp:
+            encoding: UTF-8
+            htmlcodec: xml
+            codecs:
+                expression: html
+                scriptlets: html      # TODO was 'none' in old config
+                taglib: none
+                staticparts: none
+            sitemesh:
+                preprocess: true
+---
+grails:
+    gorm:
+        failOnError: false
+hibernate:
+    cache:
+        queries: false
+        use_second_level_cache: true
+        use_query_cache: false
+        # cache.provider_class: 'net.sf.ehcache.hibernate.EhCacheProvider'
+        region.factory_class: 'org.hibernate.cache.ehcache.EhCacheRegionFactory'
+        format_sql: true
+
+endpoints:
+    jmx:
+        unique-names: true
+
+
+---
+#================================================
+#
+# Data source configuration
+#
+#================================================
+
+dataSource:
+    dbCreate: none    # updated by database-migration plugin
+    driverClassName: org.h2.Driver
+    url: jdbc:h2:file:${springcrm.dir.database}/springcrm
+    username: springcrm
+    password:
+    pooled: true
+    jmxExport: true
+#    properties :
+#        initSQL: SET REFERENTIAL_INTEGRITY FALSE
+
+grails:
+    plugin:
+        databasemigration:
+            updateOnStart: true
+            updateOnStartFileNames:
+                - changelog.groovy
+
+environments:
+    development:
+        # logSql: true
+        # formatSql: true
+    test:
+        dataSource:
+            dbCreate: update
+            url: jdbc:h2:mem:testDb;MVCC=TRUE;LOCK_TIMEOUT=10000;DB_CLOSE_ON_EXIT=FALSE
+            dbunitXmlType: flat
+            jndiName: null
+
+
+---
+#================================================
+#
+# Asset configuration
+#
+#================================================
+
+grails:
+    assets:
+        excludes:
+            # stylesheets
+            - bootstrap/**.less
+            - font-awesome/**.less
+            - js-calc/**.less
+            - selectize/**.less
+            - vat-calc/**.less
+
+            # scripts
+            - bootstrap/*.js
+            - jquery/*.js
+            - jqueryui/*.js
+            - selectize/*.js
+            - widgets/**
+        less:
+            compiler: standard
+
+
+---
+#================================================
+#
+# Plugin configuration
+#
+#================================================
+
+markdown:
+    abbreviations: true
+    definitionLists: true
+    hardwraps: true
+    removeHtml: true
+    smartPunctuation: true
+    tables: true
+
+
+---
+#================================================
+#
+# SpringCRM configuration
+#
+#================================================
+
+springcrm:
+    cacheDocs: true
+    dir:
+        data: ${springcrm.dir.base}/data
+        database: ${springcrm.dir.base}/database
+        documents: ${springcrm.dir.base}/documents
+        installer: ${springcrm.dir.base}/install
+        log: ${springcrm.dir.base}/log
+        print: ${springcrm.dir.base}/print
+    lruList:
+        numEntries: 10
+    mail:
+        from: SpringCRM Service <noreply@springcrm.de>
+
+environments:
+    test:
+        grails.plugin.databasemigration.dropOnStart: true
+        springcrm:
+            dir:
+                base: ${java.io.tmpdir}/springcrm
+                data: ${springcrm.dir.base}/data
+                documents: ${springcrm.dir.base}/documents
+                installer: ${springcrm.dir.base}/install
+                log: ${springcrm.dir.base}/log
+                print: ${springcrm.dir.base}/print
+
+
+---
+#================================================
+#
+# Documentation configuration
+#
+#================================================
+
+grails:
+    doc:
+        title: SpringCRM
+        authors:
+            - Daniel Ellermann <d.ellermann@amc-world.de>
+        license: GPL v3
+
+
+---
+#================================================
+#
+# Plugin settings
+#
+#================================================
+
+environments:
+    development:
+        grails:
+            plugin:
+                fields:
+                    disableLookupCache: true

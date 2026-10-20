@@ -1,0 +1,354 @@
+/*
+ * build.gradle
+ *
+ * Copyright (c) 2011-2022, Daniel Ellermann
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+
+import java.nio.file.Path
+import java.text.SimpleDateFormat
+import org.apache.tools.ant.filters.ReplaceTokens
+
+
+/*===============================================*\
+ *
+ *  Build process
+ *
+\*===============================================*/
+
+buildscript {
+    ext {
+        grailsVersion = project.grailsVersion
+    }
+    repositories {
+        mavenLocal()
+        maven { url 'https://repo.grails.org/grails/core' }
+    }
+    dependencies {
+        classpath "com.bertramlabs.plugins:asset-pipeline-gradle:$assetPipelineVersion"
+        classpath "com.bertramlabs.plugins:coffee-asset-pipeline:$assetPipelineVersion"
+        classpath "com.bertramlabs.plugins:handlebars-asset-pipeline:$assetPipelineVersion"
+        classpath "com.bertramlabs.plugins:less-asset-pipeline:$assetPipelineVersion"
+        classpath 'gradle.plugin.edu.sc.seis:macAppBundle:2.1.6'
+        classpath "org.grails:grails-gradle-plugin:$grailsVersion"
+        classpath 'org.grails.plugins:database-migration:3.0.0'
+        classpath 'org.grails.plugins:hibernate5:6.0.4'
+        classpath 'org.grails.plugins:i18n-asset-pipeline:2.0.0'
+        classpath 'org.grails.plugins:views-gradle:1.1.2'
+    }
+}
+
+plugins {
+    id 'edu.sc.seis.macAppBundle' version '2.1.6'
+    id 'io.spring.dependency-management' version '0.5.4.RELEASE'
+    id 'ua.eshepelyuk.ManifestClasspath' version '1.0.0'
+}
+
+
+
+/*===============================================*\
+ *
+ *  Project build
+ *
+\*===============================================*/
+
+version '2.1.10'
+group 'org.amcworld'
+
+apply plugin: 'project-report'
+apply plugin: 'war'
+apply plugin: 'asset-pipeline'
+apply plugin: 'eclipse'
+apply plugin: 'idea'
+apply plugin: 'org.grails.grails-web'
+apply plugin: 'org.grails.grails-gsp'
+apply plugin: 'org.grails.grails-doc'
+apply plugin: 'org.grails.plugins.views-json'
+apply plugin: 'org.springframework.boot'
+apply plugin: 'edu.sc.seis.macAppBundle'
+
+ext {
+    grailsVersion = project.grailsVersion
+    gradleWrapperVersion = project.gradleWrapperVersion
+}
+
+assets {
+    configOptions = [
+        less: [compiler: 'standard']
+    ]
+    enableSourceMaps = true
+    excludes = [
+        // stylesheets
+        'bootstrap/**.less',
+        'font-awesome/**.less',
+        'js-calc/**.less',
+        'selectize/**.less',
+        'vat-calc/**.less',
+
+        // scripts
+        'bootstrap/*.js',
+        'jquery/*.js',
+        'jqueryui/*.js',
+        'polyfilles/*.js',
+        'selectize/*.js',
+        'widgets/**'
+    ]
+    minifyCss = true
+    minifyJs = true
+}
+
+repositories {
+    mavenLocal()
+    maven { url 'https://repo.grails.org/grails/core' }
+}
+
+dependencyManagement {
+    imports {
+        mavenBom "org.grails:grails-bom:${grailsVersion}"
+    }
+    applyMavenExclusions false
+}
+
+dependencies {
+
+    /* set to "provided" otherwise Tomcat is embedded in WAR file */
+    compile 'org.springframework.boot:spring-boot-starter-web'
+    providedRuntime 'org.springframework.boot:spring-boot-starter-tomcat'
+
+    compile 'org.springframework.boot:spring-boot-starter-actuator'
+    compile 'org.springframework.boot:spring-boot-starter-logging'
+    compile 'org.springframework.boot:spring-boot-autoconfigure'
+
+    compile 'org.grails:grails-core'
+    compile 'org.grails:grails-dependencies'
+    compile 'org.grails:grails-web-boot'
+    compile 'org.grails.plugins:views-json:1.1.2'
+
+    compile 'org.hibernate:hibernate-core:5.1.9.Final'
+    compile 'org.hibernate:hibernate-ehcache:5.1.9.Final'
+    compile 'org.liquibase:liquibase-core:3.5.3'    // XXX change along database-migration!
+
+    /* XXX temporary for Grails 3.2.4 */
+    profile 'org.grails.profiles:web'
+//    profile 'org.grails.profiles:web:3.2.2.BUILD-SNAPSHOT'
+
+    // System dependencies (for Java 9 and higher)
+    compile 'javax.xml.bind:jaxb-api:2.3.1'
+    compile 'com.sun.xml.bind:jaxb-core:2.3.0.1'
+    compile 'com.sun.xml.bind:jaxb-impl:2.3.2'
+    compile 'javax.activation:activation:1.1.1'
+
+    // SpringCRM dependencies
+    compile 'com.google.apis:google-api-services-calendar:v3-rev20181125-1.28.0'
+    compile 'com.google.gdata:core:1.47.1'
+    compile 'commons-fileupload:commons-fileupload:1.3.1'
+    compile 'commons-io:commons-io:2.4'
+    compile 'jmimemagic:jmimemagic:0.1.2'
+    compile 'org.apache.commons:commons-vfs2:2.0'
+    compile 'commons-codec:commons-codec:1.12'
+    compile 'org.apache.httpcomponents:httpclient:4.3.2'
+    compile 'org.apache.xmlgraphics:fop:1.0'
+    compile files('lib/groovy-ldap.jar')
+
+    // Grails plugins
+    compile 'org.grails.plugins:cache'
+    compile 'org.grails.plugins:fields:2.1.3'
+    compile 'org.grails.plugins:grails-markdown:3.0.0'
+    compile 'org.grails.plugins:hibernate5'
+    compile 'org.grails.plugins:mail:2.0.0.RC6'
+    compile 'org.grails.plugins:scaffolding'
+
+    runtime "com.bertramlabs.plugins:coffee-asset-pipeline:$assetPipelineVersion"
+    runtime "com.bertramlabs.plugins:handlebars-asset-pipeline:$assetPipelineVersion"
+    runtime "com.bertramlabs.plugins:less-asset-pipeline:$assetPipelineVersion"
+    runtime 'org.grails.plugins:asset-pipeline'
+    runtime 'org.grails.plugins:database-migration:3.0.0'
+    runtime 'org.grails.plugins:i18n-asset-pipeline:2.0.0'
+
+    runtime 'mysql:mysql-connector-java:5.1.47'
+    runtime 'net.sf.barcode4j:barcode4j-fop-ext-complete:2.0'
+    runtime 'net.sf.offo:fop-hyph:1.2'
+
+    testCompile 'org.grails:grails-plugin-testing'
+    testCompile 'org.grails.plugins:geb'
+    // testCompile "org.gebish:geb-spock:${gebVersion}"
+    testCompile 'org.seleniumhq.selenium:selenium-firefox-driver:2.52.0'
+
+    testRuntime 'net.sourceforge.htmlunit:htmlunit:2.18'
+
+    console 'org.grails:grails-console'
+}
+
+sourceSets {
+    main {
+        resources {
+            srcDir 'grails-app/migrations'
+        }
+    }
+}
+
+task wrapper(type: Wrapper) {
+    gradleVersion = gradleWrapperVersion
+}
+
+/* compiling */
+task buildInfo {
+    doLast {
+        def formatter = new SimpleDateFormat('''yyyy-MM-dd'T'HH:mm:ssZ''')
+        def replaceTokens = [
+            'info.app.buildNumber': computeBuildNumber(1L).toString(),
+            'info.app.buildDate': formatter.format(new Date())
+        ]
+
+        copy {
+            from(sourceSets.main.output.resourcesDir) {
+                filter(ReplaceTokens, tokens: replaceTokens)
+                include '**/*.groovy'
+                include '**/*.yml'
+                include '**/*.xml'
+            }
+            into temporaryDir
+        }
+        copy {
+            from(temporaryDir) {
+                include '**/*.groovy'
+                include '**/*.yml'
+                include '**/*.xml'
+            }
+            into sourceSets.main.output.resourcesDir
+        }
+    }
+}
+processResources.finalizedBy buildInfo
+
+/* running */
+bootRun {
+    jvmArgs '-Dspring.output.ansi.enabled=always'
+}
+
+/* archive building */
+war {
+    doFirst {
+        copy {
+            from(sourceSets.main.resources) {
+                include 'web.xml'
+            }
+            into temporaryDir
+            filter(
+                ReplaceTokens,
+                tokens: [
+                    version: project.version,
+                    buildNumber: computeBuildNumber().toString()
+                ]
+            )
+        }
+        war.webXml = new File(temporaryDir, 'web.xml')
+    }
+//    from(processResources) {
+//        include 'launcher*.properties'
+//        include 'logo.png'
+//        include 'spinner.gif'
+//    }
+}
+bootRepackage.dependsOn jar
+// This doesn't work.  Probably the property is set during execution time.
+//bootRepackage.withJarTask = jar
+bootRepackage.doFirst {
+    bootRepackage.withJarTask = jar
+}
+
+/* deployment */
+macAppBundle {
+    appName = 'SpringCRM'
+    volumeName = "springcrm-${version}"
+    dmgName = 'springcrm'
+    mainClassName = 'org.springframework.boot.loader.PropertiesLauncher'
+//    bundleJRE = true
+    javaProperties.put 'loader.main', 'springcrm.Application'
+    javaProperties.put 'apple.laf.useScreenMenuBar', 'true'
+    javaProperties.put 'apple.awt.brushMetalLook', 'true'
+    backgroundImage = 'background.png'
+    backgroundImageWidth = 600
+    backgroundImageHeight = 400
+    icon = 'springcrm.icns'
+    appIconX = 124
+    appIconY = 192
+    appFolderX = 297
+    appFolderY = 192
+}
+copyToResourcesJava.doLast {
+    FileTree tree = fileTree('build/macApp/SpringCRM.app/Contents/Java') {
+        include '**/*.jar'
+        exclude 'springcrm-*.jar'
+    }
+    tree.each { it.delete() }
+
+    file('build/macApp/SpringCRM.app/Contents/Java/Classes').mkdir()
+}
+
+/* documentation */
+groovydoc {
+    docTitle = "SpringCRM API v${version}"
+    windowTitle = "SpringCRM API v${version}"
+}
+
+/* IDE support */
+eclipse {
+    classpath {
+        file {
+            whenMerged { classpath ->
+                Path projectPath = projectDir.toPath()
+                classpath.entries
+                    .each {
+
+                        // transform to relative paths
+                        if (it.kind == 'lib') {
+                            Path p = projectPath.relativize(
+                                file(it.path).toPath()
+                            )
+                            it.path = p.toString()
+                        }
+                    }
+                    .removeAll {
+
+                        // remove entry "gsp-classes"
+                        it.kind == 'lib' && it.path == 'gsp-classes'
+                    }
+            }
+        }
+    }
+    pathVariables(
+        GRADLE_CACHE: file("${System.getProperty('user.home')}/.gradle"),
+        M2_REPO: file("${System.getProperty('user.home')}/.m2/repository")
+    )
+    project {
+        natures 'org.springsource.ide.eclipse.gradle.core.nature'
+    }
+}
+
+
+long computeBuildNumber(long offset = 0L) {
+    long buildNumber = 0L
+
+    File buildNumberFile = file('grails-app/conf/buildNumber')
+    if (buildNumberFile.exists()) {
+        buildNumber = buildNumberFile.text.trim() as long
+        if (offset > 0L) buildNumber += offset
+    }
+    if (offset > 0L) buildNumberFile.text = buildNumber.toString()
+
+    buildNumber
+}

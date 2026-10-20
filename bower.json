@@ -1,0 +1,56 @@
+{
+  "name": "springcrm",
+  "version": "2.1.9",
+  "homepage": "https://www.springcrm.de",
+  "authors": [
+    {
+      "name": "Daniel Ellermann",
+      "email": "d.ellermann@amc-world.de"
+    },
+    {
+      "name": "Philip Drozd",
+      "email": "p.drozd@amc-world.de"
+    }
+  ],
+  "description": "An open-source customer relationship management (CRM) software.",
+  "keywords": [
+    "SpringCRM",
+    "CRM",
+    "Groovy",
+    "Grails"
+  ],
+  "license": "GPL-3.0+",
+  "private": true,
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests"
+  ],
+  "dependencies": {
+    "bootstrap": "~3.3.7",
+    "bootstrap-datepicker": "~1.6.4",
+    "bootstrap-fileinput": "~4.3.6",
+    "font-awesome": "~4.7.0",
+    "handlebars": "~3.0.3",
+    "jQuery-Storage-API": "~1.7.5",
+    "jquery-autosize": "~3.0.14",
+    "jquery-json": "~2.6.0",
+    "jquery-mockjax": "2.2.1",
+    "jqueryui": "~1.11.4",
+    "jqueryui-touch-punch": "",
+    "js-calc": "~0.9.10",
+    "qunit": "~1.18.0",
+    "selectize": "~0.12.4",
+    "typeahead.js": "~0.11.1",
+    "typeahead.js-bootstrap3.less": "~0.2.3",
+    "vat-calc": "~0.9.5"
+  },
+  "resolutions": {
+    "bootstrap": "~3.3.7",
+    "jquery": "2.2.0",
+    "typeahead.js": "~0.11.1",
+    "sifter": "0.5.x"
+  }
+}
